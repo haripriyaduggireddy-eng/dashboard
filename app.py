@@ -1,64 +1,114 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import plotly.express as px
 
-# Page config
-st.set_page_config(page_title="NFHS Dashboard", layout="wide")
+# ----------------------------------
+# Page configuration
+# ----------------------------------
+st.set_page_config(
+    page_title="NFHS-4 India Dashboard",
+    layout="wide"
+)
 
-# Title
-st.title("📊 National Family Health Survey (NFHS) Dashboard")
+st.title("📊 National Family Health Survey (NFHS-4) Dashboard")
+st.markdown("Interactive analysis of NFHS indicators across States, Area and Survey rounds")
 
-# Load data
+# ----------------------------------
+# Load Data
+# ----------------------------------
 @st.cache_data
 def load_data():
-    df = pd.read_excel("/mnt/data/All India National Family Health Survey1.xlsx")
+    df = pd.read_excel("All India National Family Health Survey4.xlsx")
     return df
 
 df = load_data()
 
-# Show raw data
-st.subheader("📄 Raw Data Preview")
-st.dataframe(df.head())
-
-# Sidebar filters
+# ----------------------------------
+# Sidebar Filters
+# ----------------------------------
 st.sidebar.header("🔍 Filters")
 
-# Select column for analysis
-numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-selected_col = st.sidebar.selectbox("Select a numeric indicator", numeric_cols)
+state = st.sidebar.selectbox(
+    "Select State / UT",
+    sorted(df["India/States/UTs"].unique())
+)
 
-# Optional state filter (if present)
-if "State" in df.columns:
-    states = df["State"].unique()
-    selected_state = st.sidebar.multiselect("Select State(s)", states, default=states)
+survey = st.sidebar.selectbox(
+    "Select Survey",
+    sorted(df["Survey"].unique())
+)
 
-    filtered_df = df[df["State"].isin(selected_state)]
-else:
-    filtered_df = df
+area = st.sidebar.selectbox(
+    "Select Area",
+    sorted(df["Area"].unique())
+)
 
-# KPI section
-st.subheader("📌 Key Statistics")
-col1, col2, col3 = st.columns(3)
+# ----------------------------------
+# Filter Data
+# ----------------------------------
+filtered_df = df[
+    (df["India/States/UTs"] == state) &
+    (df["Survey"] == survey) &
+    (df["Area"] == area)
+]
 
-col1.metric("Mean", round(filtered_df[selected_col].mean(), 2))
-col2.metric("Maximum", round(filtered_df[selected_col].max(), 2))
-col3.metric("Minimum", round(filtered_df[selected_col].min(), 2))
+# ----------------------------------
+# Indicator Selection
+# ----------------------------------
+indicator_columns = df.columns[3:]  # Exclude State, Survey, Area
 
-# Chart section
-st.subheader(f"📈 Distribution of {selected_col}")
+indicator = st.selectbox(
+    "📌 Select Indicator",
+    indicator_columns
+)
 
-fig, ax = plt.subplots()
-sns.histplot(filtered_df[selected_col].dropna(), kde=True, ax=ax)
-st.pyplot(fig)
+# ----------------------------------
+# KPI Display
+# ----------------------------------
+value = filtered_df[indicator].values[0]
 
-# Bar chart (State-wise if available)
-if "State" in df.columns:
-    st.subheader(f"🏙️ State-wise {selected_col}")
+st.metric(
+    label=indicator,
+    value=f"{value}"
+)
 
-    state_avg = filtered_df.groupby("State")[selected_col].mean().sort_values(ascending=False)
+# ----------------------------------
+# Comparison Chart Across States
+# ----------------------------------
+st.subheader("📈 State-wise Comparison")
 
-    fig2, ax2 = plt.subplots(figsize=(10, 6))
-    state_avg.plot(kind="bar", ax=ax2)
-    ax2.set_ylabel(selected_col)
-    st.pyplot(fig2)
+compare_df = df[
+    (df["Survey"] == survey) &
+    (df["Area"] == area)
+][["India/States/UTs", indicator]].dropna()
+
+fig = px.bar(
+    compare_df,
+    x="India/States/UTs",
+    y=indicator,
+    title=f"{indicator} ({survey} - {area})",
+    labels={"India/States/UTs": "State / UT"},
+)
+
+fig.update_layout(
+    xaxis_tickangle=-45,
+    height=500
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# ----------------------------------
+# Data Table
+# ----------------------------------
+st.subheader("📋 Filtered Data View")
+st.dataframe(filtered_df, use_container_width=True)
+
+# ----------------------------------
+# Download Option
+# ----------------------------------
+st.download_button(
+    label="⬇️ Download Filtered Data",
+    data=filtered_df.to_csv(index=False),
+    file_name="nfhs_filtered_data.csv",
+    mime="text/csv"
+)
